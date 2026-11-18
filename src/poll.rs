@@ -107,8 +107,8 @@ pub fn sync(sink: &mut impl TraySink, readings: &[Reading]) -> Vec<String> {
     gone
 }
 
-/// Polls immediately, then once per `interval` — or once per `retry` while some
-/// device reported no level — until `stop` is set.
+/// Polls immediately, then after `interval` — while some device reports no level
+/// the gap grows through `retry` instead — until `stop` is set.
 ///
 /// Runs on the caller's thread, which must not be inside an async runtime: the
 /// sources drive D-Bus with `zbus::block_on`.
@@ -117,9 +117,11 @@ pub fn run<S: TraySink>(
     sink: &mut S,
     notifier: &mut Notifier,
     interval: Duration,
-    retry: Duration,
+    retry: &[Duration],
     stop: &AtomicBool,
 ) {
+    let mut schedule = Schedule::new(interval, retry);
+
     loop {
         let readings = poll_once(sources);
         log_readings(&readings);
@@ -132,22 +134,45 @@ pub fn run<S: TraySink>(
 
         // A stop request during the wait ends the loop without another poll: the
         // extra poll would only delay the exit behind another D-Bus round trip.
-        if wait(delay_until_next_poll(&readings, interval, retry), stop) {
+        if wait(schedule.next_delay(&readings), stop) {
             return;
         }
     }
 }
 
-/// Delay before the next poll.
+/// Gap before the next poll.
 ///
-/// A device without a level is usually asleep behind its receiver, and the
-/// level it left in the tray is only stale, not gone: polling again soon shows
-/// the fresh value as soon as the device wakes up.
-fn delay_until_next_poll(readings: &[Reading], interval: Duration, retry: Duration) -> Duration {
-    if readings.iter().any(|reading| reading.level.is_none()) {
-        retry
-    } else {
-        interval
+/// A device without a level is usually asleep behind its receiver, so the level
+/// it left in the tray is stale rather than gone and polling again soon shows
+/// the fresh value once the device wakes. A device that stays silent is not
+/// worth a query every half minute, so the gap grows along `retry` up to its
+/// last entry; one successful read puts the loop back on `interval`.
+struct Schedule {
+    interval: Duration,
+    retry: Vec<Duration>,
+    silent_polls: usize,
+}
+
+impl Schedule {
+    fn new(interval: Duration, retry: &[Duration]) -> Self {
+        Self {
+            interval,
+            retry: retry.to_vec(),
+            silent_polls: 0,
+        }
+    }
+
+    /// Delay before the next poll, given what the last poll returned.
+    fn next_delay(&mut self, readings: &[Reading]) -> Duration {
+        if !readings.iter().any(|reading| reading.level.is_none()) {
+            self.silent_polls = 0;
+            return self.interval;
+        }
+
+        let step = self.silent_polls.min(self.retry.len().saturating_sub(1));
+        self.silent_polls = self.silent_polls.saturating_add(1);
+
+        self.retry.get(step).copied().unwrap_or(self.interval)
     }
 }
 
@@ -204,7 +229,19 @@ mod tests {
 
     /// Stand-ins for the real constants, so a change to them cannot break a test.
     const REGULAR: Duration = Duration::from_secs(600);
-    const RETRY: Duration = Duration::from_secs(30);
+    const BACKOFF: [Duration; 3] = [
+        Duration::from_secs(30),
+        Duration::from_secs(60),
+        Duration::from_secs(300),
+    ];
+
+    fn schedule() -> Schedule {
+        Schedule::new(REGULAR, &BACKOFF)
+    }
+
+    fn silent() -> [Reading; 1] {
+        [Reading::new(device("mouse", "Mouse"), None)]
+    }
 
     /// Source that serves canned data and can be told to fail.
     struct FakeSource {
@@ -473,12 +510,10 @@ mod tests {
     }
 
     #[test]
-    fn silent_device_is_retried_soon() {
-        let readings = [Reading::new(device("mouse", "Mouse"), None)];
-
+    fn silent_device_is_retried_after_the_shortest_gap() {
         assert_eq!(
-            delay_until_next_poll(&readings, REGULAR, RETRY),
-            RETRY,
+            schedule().next_delay(&silent()),
+            BACKOFF[0],
             "a sleeping device must not wait for the regular interval"
         );
     }
@@ -490,7 +525,33 @@ mod tests {
             Reading::new(device("keys", "Keyboard"), None),
         ];
 
-        assert_eq!(delay_until_next_poll(&readings, REGULAR, RETRY), RETRY);
+        assert_eq!(schedule().next_delay(&readings), BACKOFF[0]);
+    }
+
+    #[test]
+    fn repeated_silence_stretches_the_gap_and_then_holds() {
+        let mut schedule = schedule();
+        let delays: Vec<Duration> = (0..5).map(|_| schedule.next_delay(&silent())).collect();
+
+        assert_eq!(
+            delays,
+            [BACKOFF[0], BACKOFF[1], BACKOFF[2], BACKOFF[2], BACKOFF[2]]
+        );
+    }
+
+    #[test]
+    fn successful_read_returns_to_the_regular_interval() {
+        let mut schedule = schedule();
+        let awake = [Reading::new(device("mouse", "Mouse"), Some(77))];
+
+        assert_eq!(schedule.next_delay(&silent()), BACKOFF[0]);
+        assert_eq!(schedule.next_delay(&silent()), BACKOFF[1]);
+        assert_eq!(schedule.next_delay(&awake), REGULAR);
+        assert_eq!(
+            schedule.next_delay(&silent()),
+            BACKOFF[0],
+            "a new silence starts over from the shortest gap"
+        );
     }
 
     #[test]
@@ -500,12 +561,19 @@ mod tests {
             Reading::new(device("keys", "Keyboard"), Some(40)),
         ];
 
-        assert_eq!(delay_until_next_poll(&readings, REGULAR, RETRY), REGULAR);
+        assert_eq!(schedule().next_delay(&readings), REGULAR);
     }
 
     #[test]
     fn empty_poll_waits_the_regular_interval() {
-        assert_eq!(delay_until_next_poll(&[], REGULAR, RETRY), REGULAR);
+        assert_eq!(schedule().next_delay(&[]), REGULAR);
+    }
+
+    #[test]
+    fn missing_backoff_never_retries_sooner_than_the_interval() {
+        let mut schedule = Schedule::new(REGULAR, &[]);
+
+        assert_eq!(schedule.next_delay(&silent()), REGULAR);
     }
 
     #[test]

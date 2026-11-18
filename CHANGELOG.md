@@ -34,10 +34,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   30%, amber 11–30%, red at 10% and below), the percentage in a built-in 3×5
   bitmap font, and `?` on grey while the level is unknown. `cargo run --example
   preview_icons -- target/icons` writes sample PNGs for a visual check.
-- Polling retries after 30 s when a poll comes back without a level for some
-  device, so a wireless mouse that was asleep shows its fresh charge within half
-  a minute of waking instead of after the next ten-minute poll. `no data` is
-  logged at debug level, because the retry would otherwise repeat it.
+- Polling retries when a poll comes back without a level for some device: after
+  30 s, then a minute, then five, so a wireless mouse that was asleep shows its
+  fresh charge within half a minute of waking instead of after the next
+  ten-minute poll. One successful read restores the ten-minute interval. `no
+  data` is logged at debug level, because the retries would otherwise repeat it.
 - Low-battery notifications (notify-rust): one alert per discharge cycle, sent
   when the level drops from above 10% to 10% or below, re-armed only after the
   device is charged above the threshold. A device that is already low when the

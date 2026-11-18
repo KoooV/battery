@@ -9,7 +9,7 @@ use battery_tray::poll;
 use battery_tray::sources::demo::{DemoSource, LEVEL_ENV};
 use battery_tray::tray::TrayItems;
 use battery_tray::{
-    BatterySource, CompxSource, LOW_THRESHOLD, POLL_INTERVAL, RETRY_INTERVAL, UpowerSource,
+    BatterySource, CompxSource, LOW_THRESHOLD, POLL_INTERVAL, RETRY_INTERVALS, UpowerSource,
 };
 use tracing::{info, warn};
 
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
         &mut tray,
         &mut notifier,
         POLL_INTERVAL,
-        RETRY_INTERVAL,
+        &RETRY_INTERVALS,
         &quit,
     );
     tray.shutdown();
