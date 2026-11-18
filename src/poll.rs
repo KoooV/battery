@@ -107,7 +107,8 @@ pub fn sync(sink: &mut impl TraySink, readings: &[Reading]) -> Vec<String> {
     gone
 }
 
-/// Polls immediately, then once per `interval`, until `stop` is set.
+/// Polls immediately, then once per `interval` — or once per `retry` while some
+/// device reported no level — until `stop` is set.
 ///
 /// Runs on the caller's thread, which must not be inside an async runtime: the
 /// sources drive D-Bus with `zbus::block_on`.
@@ -116,6 +117,7 @@ pub fn run<S: TraySink>(
     sink: &mut S,
     notifier: &mut Notifier,
     interval: Duration,
+    retry: Duration,
     stop: &AtomicBool,
 ) {
     loop {
@@ -130,9 +132,22 @@ pub fn run<S: TraySink>(
 
         // A stop request during the wait ends the loop without another poll: the
         // extra poll would only delay the exit behind another D-Bus round trip.
-        if wait(interval, stop) {
+        if wait(delay_until_next_poll(&readings, interval, retry), stop) {
             return;
         }
+    }
+}
+
+/// Delay before the next poll.
+///
+/// A device without a level is usually asleep behind its receiver, and the
+/// level it left in the tray is only stale, not gone: polling again soon shows
+/// the fresh value as soon as the device wakes up.
+fn delay_until_next_poll(readings: &[Reading], interval: Duration, retry: Duration) -> Duration {
+    if readings.iter().any(|reading| reading.level.is_none()) {
+        retry
+    } else {
+        interval
     }
 }
 
@@ -155,7 +170,8 @@ fn log_readings(readings: &[Reading]) {
     for reading in readings {
         match reading.level {
             Some(level) => info!("{}: {level}%", reading.device.name),
-            None => info!("{}: no data", reading.device.name),
+            // Not `info`: while a device sleeps this repeats on every retry.
+            None => debug!("{}: no data", reading.device.name),
         }
     }
 }
@@ -185,6 +201,10 @@ mod tests {
 
     use super::*;
     use crate::sources::{DeviceKind, Protocol, SourceError};
+
+    /// Stand-ins for the real constants, so a change to them cannot break a test.
+    const REGULAR: Duration = Duration::from_secs(600);
+    const RETRY: Duration = Duration::from_secs(30);
 
     /// Source that serves canned data and can be told to fail.
     struct FakeSource {
@@ -450,6 +470,42 @@ mod tests {
         let stop = AtomicBool::new(false);
 
         assert!(!wait(Duration::from_millis(10), &stop));
+    }
+
+    #[test]
+    fn silent_device_is_retried_soon() {
+        let readings = [Reading::new(device("mouse", "Mouse"), None)];
+
+        assert_eq!(
+            delay_until_next_poll(&readings, REGULAR, RETRY),
+            RETRY,
+            "a sleeping device must not wait for the regular interval"
+        );
+    }
+
+    #[test]
+    fn one_silent_device_is_enough_to_retry() {
+        let readings = [
+            Reading::new(device("mouse", "Mouse"), Some(80)),
+            Reading::new(device("keys", "Keyboard"), None),
+        ];
+
+        assert_eq!(delay_until_next_poll(&readings, REGULAR, RETRY), RETRY);
+    }
+
+    #[test]
+    fn poll_with_every_level_waits_the_regular_interval() {
+        let readings = [
+            Reading::new(device("mouse", "Mouse"), Some(80)),
+            Reading::new(device("keys", "Keyboard"), Some(40)),
+        ];
+
+        assert_eq!(delay_until_next_poll(&readings, REGULAR, RETRY), REGULAR);
+    }
+
+    #[test]
+    fn empty_poll_waits_the_regular_interval() {
+        assert_eq!(delay_until_next_poll(&[], REGULAR, RETRY), REGULAR);
     }
 
     #[test]

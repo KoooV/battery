@@ -14,4 +14,4 @@ pub mod tray;
 pub use sources::{
     BatterySource, CompxSource, Device, DeviceKind, Protocol, SourceError, UpowerSource,
 };
-pub use state::{DeviceState, LOW_THRESHOLD, POLL_INTERVAL};
+pub use state::{DeviceState, LOW_THRESHOLD, POLL_INTERVAL, RETRY_INTERVAL};

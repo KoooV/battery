@@ -5,6 +5,13 @@ use std::time::Duration;
 /// How often every source is polled.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
+/// How soon a poll is retried when a device reported no level.
+///
+/// A wireless mouse that sleeps behind its receiver answers nothing, so its
+/// last level goes stale; retrying soon keeps the tray current within half a
+/// minute of the device waking instead of within ten minutes.
+pub const RETRY_INTERVAL: Duration = Duration::from_secs(30);
+
 /// Charge level, in percent, at which a low-battery notification is sent.
 pub const LOW_THRESHOLD: u8 = 10;
 
