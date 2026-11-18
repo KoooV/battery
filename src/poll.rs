@@ -11,33 +11,26 @@ use std::time::Duration;
 
 use tracing::{debug, info, warn};
 
+use crate::notify::Notifier;
 use crate::sources::{BatterySource, Device};
-use crate::state::DeviceState;
 
 /// How often the loop looks at the stop flag while waiting for the next poll.
 /// Short enough for a responsive "Quit", long enough not to busy-wait.
 const STOP_CHECK: Duration = Duration::from_millis(200);
 
-/// One device with the state read for it in this poll.
+/// One device with the level read for it in this poll.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reading {
     /// Device that was reported.
     pub device: Device,
-    /// State read for it; `level` is `None` when the source could not read one.
-    pub state: DeviceState,
+    /// Level read for it; `None` when the source could not read one.
+    pub level: Option<u8>,
 }
 
 impl Reading {
-    /// Builds a reading for a device; notification bookkeeping starts empty and
-    /// is filled in by the notification logic of stage 5.
+    /// Builds a reading for a device.
     pub fn new(device: Device, level: Option<u8>) -> Self {
-        Self {
-            device,
-            state: DeviceState {
-                level,
-                ..DeviceState::default()
-            },
-        }
+        Self { device, level }
     }
 }
 
@@ -121,6 +114,7 @@ pub fn sync(sink: &mut impl TraySink, readings: &[Reading]) -> Vec<String> {
 pub fn run<S: TraySink>(
     sources: &[Box<dyn BatterySource>],
     sink: &mut S,
+    notifier: &mut Notifier,
     interval: Duration,
     stop: &AtomicBool,
 ) {
@@ -128,12 +122,22 @@ pub fn run<S: TraySink>(
         let readings = poll_once(sources);
         log_readings(&readings);
         sync(sink, &readings);
+        notify(notifier, &readings);
 
         if stop.load(Ordering::Relaxed) {
             return;
         }
 
         wait(interval, stop);
+    }
+}
+
+/// Feeds the notifier and shows the alerts it returns.
+fn notify(notifier: &mut Notifier, readings: &[Reading]) {
+    for reading in readings {
+        if let Some(alert) = notifier.observe(&reading.device, reading.level) {
+            notifier.send(&alert);
+        }
     }
 }
 
@@ -145,7 +149,7 @@ fn log_readings(readings: &[Reading]) {
     }
 
     for reading in readings {
-        match reading.state.level {
+        match reading.level {
             Some(level) => info!("{}: {level}%", reading.device.name),
             None => info!("{}: no data", reading.device.name),
         }
@@ -241,8 +245,7 @@ mod tests {
 
     impl TraySink for SpySink {
         fn show(&mut self, reading: &Reading) {
-            self.shown
-                .push((reading.device.id.clone(), reading.state.level));
+            self.shown.push((reading.device.id.clone(), reading.level));
             if !self.visible.contains(&reading.device.id) {
                 self.visible.push(reading.device.id.clone());
             }
@@ -273,9 +276,9 @@ mod tests {
 
         assert_eq!(readings.len(), 2);
         assert_eq!(readings[0].device.id, "mouse");
-        assert_eq!(readings[0].state.level, Some(40));
+        assert_eq!(readings[0].level, Some(40));
         assert_eq!(readings[1].device.id, "keys");
-        assert_eq!(readings[1].state.level, Some(80));
+        assert_eq!(readings[1].level, Some(80));
     }
 
     #[test]
@@ -301,7 +304,7 @@ mod tests {
         let readings = poll_once(&sources);
 
         assert_eq!(readings.len(), 1);
-        assert_eq!(readings[0].state.level, None);
+        assert_eq!(readings[0].level, None);
     }
 
     #[test]

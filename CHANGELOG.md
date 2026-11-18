@@ -26,6 +26,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   30%, amber 11–30%, red at 10% and below), the percentage in a built-in 3×5
   bitmap font, and `?` on grey while the level is unknown. `cargo run --example
   preview_icons -- target/icons` writes sample PNGs for a visual check.
+- Low-battery notifications (notify-rust): one alert per discharge cycle, sent
+  when the level drops from above 10% to 10% or below, re-armed only after the
+  device is charged above the threshold. A device that is already low when the
+  application starts is not announced, so a restart does not repeat the alert.
+- `BATTERY_TRAY_DEMO_STEP=N` makes the demo device lose N percent per poll, so a
+  threshold crossing and its notification can be watched without hardware.
 - Polling loop: every source is polled at start and then every 10 minutes on
   the main thread, and the tray follows the result — new devices get an icon,
   a gone device loses it, a device that cannot be read stays with "no data".

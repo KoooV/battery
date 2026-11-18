@@ -4,10 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use anyhow::Result;
+use battery_tray::notify::Notifier;
 use battery_tray::poll;
 use battery_tray::sources::demo::{DemoSource, LEVEL_ENV};
 use battery_tray::tray::TrayItems;
-use battery_tray::{BatterySource, POLL_INTERVAL, UpowerSource};
+use battery_tray::{BatterySource, LOW_THRESHOLD, POLL_INTERVAL, UpowerSource};
 use tracing::{info, warn};
 
 fn main() -> Result<()> {
@@ -41,7 +42,8 @@ fn main() -> Result<()> {
 
     // Polling runs here, on the main thread; tray callbacks never touch the bus.
     let mut tray = TrayItems::new(Arc::clone(&quit));
-    poll::run(&sources, &mut tray, POLL_INTERVAL, &quit);
+    let mut notifier = Notifier::new(LOW_THRESHOLD);
+    poll::run(&sources, &mut tray, &mut notifier, POLL_INTERVAL, &quit);
     tray.shutdown();
 
     info!("quit requested from the tray, exiting");

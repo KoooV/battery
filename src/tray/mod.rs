@@ -90,7 +90,7 @@ impl TrayItems {
 
 impl TraySink for TrayItems {
     fn show(&mut self, reading: &Reading) {
-        let level = reading.state.level;
+        let level = reading.level;
 
         if let Some(handle) = self.items.get(&reading.device.id) {
             handle.update(|tray: &mut DeviceTray| tray.set_level(level));
