@@ -9,6 +9,10 @@
 
 use thiserror::Error;
 
+pub mod upower;
+
+pub use upower::UpowerSource;
+
 /// Kind of peripheral a source reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceKind {

@@ -1,0 +1,19 @@
+# org.freedesktop.DBus.Properties.GetAll replies for
+# org.freedesktop.UPower.Device objects, one device per block, blocks separated
+# by "---". Values are typed as UPower types them.
+#
+# The first block is the laptop battery of the development machine, taken from
+# docs/upower-dump.txt (real hardware).
+#
+# The second block is a peripheral written from the UPower documentation: the
+# development machine has no mouse or keyboard that UPower can see, see
+# docs/devices.md.
+Type=2
+Model=HB4792Z9ECW-22T
+Percentage=37
+IsPresent=true
+---
+Type=5
+Model=MX Master 3S
+Percentage=55.4
+IsPresent=true
