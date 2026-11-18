@@ -5,13 +5,17 @@
 //! stage 4. Each item carries the device name and charge in its menu and a
 //! "Quit" entry that stops the application.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::StandardItem;
 use ksni::{Category, Icon, MenuItem, Status, ToolTip, Tray};
+use tracing::{info, warn};
 
 use crate::icon;
+use crate::poll::{Reading, TraySink};
 use crate::sources::Device;
 
 /// Label of the menu entry that stops the application.
@@ -55,6 +59,63 @@ impl DeviceTray {
     /// Happens when the user picks "Quit"; the poll loop owns the shutdown.
     fn request_quit(&mut self) {
         self.quit.store(true, Ordering::Relaxed);
+    }
+}
+
+/// The set of tray icons the application currently shows.
+///
+/// Implements [`TraySink`], so the poll loop never talks to ksni directly: it
+/// hands over readings and this type adds, updates or removes icons.
+pub struct TrayItems {
+    quit: Arc<AtomicBool>,
+    items: HashMap<String, Handle<DeviceTray>>,
+}
+
+impl TrayItems {
+    /// Creates an empty set of icons that reports quits through `quit`.
+    pub fn new(quit: Arc<AtomicBool>) -> Self {
+        Self {
+            quit,
+            items: HashMap::new(),
+        }
+    }
+
+    /// Shuts every icon down; called when the application exits.
+    pub fn shutdown(&mut self) {
+        for (_, handle) in self.items.drain() {
+            handle.shutdown().wait();
+        }
+    }
+}
+
+impl TraySink for TrayItems {
+    fn show(&mut self, reading: &Reading) {
+        let level = reading.state.level;
+
+        if let Some(handle) = self.items.get(&reading.device.id) {
+            handle.update(|tray: &mut DeviceTray| tray.set_level(level));
+            return;
+        }
+
+        let tray = DeviceTray::new(reading.device.clone(), level, Arc::clone(&self.quit));
+        match tray.spawn() {
+            Ok(handle) => {
+                info!("tray icon added for {}", reading.device.name);
+                self.items.insert(reading.device.id.clone(), handle);
+            }
+            Err(err) => warn!("cannot add a tray icon for {}: {err}", reading.device.name),
+        }
+    }
+
+    fn remove(&mut self, device_id: &str) {
+        if let Some(handle) = self.items.remove(device_id) {
+            info!("tray icon removed for {device_id}");
+            handle.shutdown().wait();
+        }
+    }
+
+    fn visible(&self) -> Vec<String> {
+        self.items.keys().cloned().collect()
     }
 }
 

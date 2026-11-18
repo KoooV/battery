@@ -6,6 +6,7 @@
 
 pub mod icon;
 pub mod notify;
+pub mod poll;
 pub mod sources;
 pub mod state;
 pub mod tray;

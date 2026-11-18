@@ -1,19 +1,14 @@
 //! `battery-tray` — shows battery levels of mice and keyboards in the system tray.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use std::time::Duration;
+use std::sync::atomic::AtomicBool;
 
 use anyhow::Result;
-use battery_tray::tray::DeviceTray;
-use battery_tray::{BatterySource, UpowerSource};
-use ksni::blocking::TrayMethods;
+use battery_tray::poll;
+use battery_tray::sources::demo::{DemoSource, LEVEL_ENV};
+use battery_tray::tray::TrayItems;
+use battery_tray::{BatterySource, POLL_INTERVAL, UpowerSource};
 use tracing::{info, warn};
-
-/// How often the main thread checks whether the user asked to quit. Polling the
-/// sources is added in stage 4.
-const QUIT_CHECK_INTERVAL: Duration = Duration::from_millis(200);
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -28,64 +23,26 @@ fn main() -> Result<()> {
 
     let quit = Arc::new(AtomicBool::new(false));
 
-    // The level is read once: the polling loop that keeps it fresh is stage 4.
-    let devices = match UpowerSource::connect() {
-        Ok(source) => match source.list() {
-            Ok(devices) => devices
-                .into_iter()
-                .map(|device| {
-                    let level = match source.level(&device) {
-                        Ok(level) => level,
-                        Err(err) => {
-                            warn!("{err}");
-                            None
-                        }
-                    };
-                    (device, level)
-                })
-                .collect::<Vec<_>>(),
-            Err(err) => {
-                warn!("{err}");
-                Vec::new()
-            }
-        },
-        Err(err) => {
-            warn!("{err}");
-            Vec::new()
-        }
-    };
+    let mut sources: Vec<Box<dyn BatterySource>> = Vec::new();
+    match UpowerSource::connect() {
+        Ok(source) => sources.push(Box::new(source)),
+        Err(err) => warn!("{err}"),
+    }
 
-    if devices.is_empty() {
-        warn!("no device with a battery found, nothing to show in the tray");
+    if let Some(demo) = DemoSource::from_env() {
+        info!("demo device enabled through {LEVEL_ENV}");
+        sources.push(Box::new(demo));
+    }
+
+    if sources.is_empty() {
+        warn!("no battery source is available, nothing to poll, exiting");
         return Ok(());
     }
 
-    let mut handles = Vec::new();
-    for (device, level) in devices {
-        info!(
-            "{}: {}",
-            device.name,
-            level.map_or("no data".to_owned(), |level| format!("{level}%"))
-        );
-
-        match DeviceTray::new(device, level, Arc::clone(&quit)).spawn() {
-            Ok(handle) => handles.push(handle),
-            Err(err) => warn!("cannot add a tray icon: {err}"),
-        }
-    }
-
-    if handles.is_empty() {
-        warn!("no tray icon could be added, exiting");
-        return Ok(());
-    }
-
-    while !quit.load(Ordering::Relaxed) {
-        thread::sleep(QUIT_CHECK_INTERVAL);
-    }
-
-    for handle in handles {
-        handle.shutdown().wait();
-    }
+    // Polling runs here, on the main thread; tray callbacks never touch the bus.
+    let mut tray = TrayItems::new(Arc::clone(&quit));
+    poll::run(&sources, &mut tray, POLL_INTERVAL, &quit);
+    tray.shutdown();
 
     info!("quit requested from the tray, exiting");
     Ok(())

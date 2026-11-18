@@ -9,6 +9,7 @@
 
 use thiserror::Error;
 
+pub mod demo;
 pub mod upower;
 
 pub use upower::UpowerSource;

@@ -26,5 +26,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   30%, amber 11–30%, red at 10% and below), the percentage in a built-in 3×5
   bitmap font, and `?` on grey while the level is unknown. `cargo run --example
   preview_icons -- target/icons` writes sample PNGs for a visual check.
+- Polling loop: every source is polled at start and then every 10 minutes on
+  the main thread, and the tray follows the result — new devices get an icon,
+  a gone device loses it, a device that cannot be read stays with "no data".
+  `poll` is split into `poll_once` and `sync` and tested with a fake source.
+- Temporary demo source for checking the tray without hardware:
+  `BATTERY_TRAY_DEMO_LEVEL=42` (or `none`) and `BATTERY_TRAY_DEMO_NAME`.
 - Stage 0 device survey in `docs/`: what UPower and the kernel expose on the
   development machine and which backend each device would need.
