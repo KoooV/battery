@@ -1,8 +1,19 @@
 //! `battery-tray` — shows battery levels of mice and keyboards in the system tray.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
+
 use anyhow::Result;
+use battery_tray::tray::DeviceTray;
 use battery_tray::{BatterySource, UpowerSource};
+use ksni::blocking::TrayMethods;
 use tracing::{info, warn};
+
+/// How often the main thread checks whether the user asked to quit. Polling the
+/// sources is added in stage 4.
+const QUIT_CHECK_INTERVAL: Duration = Duration::from_millis(200);
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -15,37 +26,67 @@ fn main() -> Result<()> {
 
     info!("battery-tray {} starting", env!("CARGO_PKG_VERSION"));
 
-    // The tray is added in stage 3; until then the polled devices are printed so
-    // the UPower source can be checked on a real machine.
-    match UpowerSource::connect() {
-        Ok(source) => report(&source),
-        Err(err) => warn!("{err}"),
-    }
+    let quit = Arc::new(AtomicBool::new(false));
 
-    Ok(())
-}
-
-/// Prints every device the source knows and its current level.
-fn report(source: &UpowerSource) {
-    let devices = match source.list() {
-        Ok(devices) => devices,
+    // The level is read once: the polling loop that keeps it fresh is stage 4.
+    let devices = match UpowerSource::connect() {
+        Ok(source) => match source.list() {
+            Ok(devices) => devices
+                .into_iter()
+                .map(|device| {
+                    let level = match source.level(&device) {
+                        Ok(level) => level,
+                        Err(err) => {
+                            warn!("{err}");
+                            None
+                        }
+                    };
+                    (device, level)
+                })
+                .collect::<Vec<_>>(),
+            Err(err) => {
+                warn!("{err}");
+                Vec::new()
+            }
+        },
         Err(err) => {
             warn!("{err}");
-            return;
+            Vec::new()
         }
     };
 
     if devices.is_empty() {
-        info!("{}: no peripheral with a battery", source.name());
-        return;
+        warn!("no device with a battery found, nothing to show in the tray");
+        return Ok(());
     }
 
-    for device in devices {
-        match source.level(&device) {
-            Ok(Some(level)) => info!("{} ({:?}): {level}%", device.name, device.kind),
-            Ok(None) => info!("{} ({:?}): no charge reported", device.name, device.kind),
-            // A device that vanished between listing and reading is not fatal.
-            Err(err) => warn!("{err}"),
+    let mut handles = Vec::new();
+    for (device, level) in devices {
+        info!(
+            "{}: {}",
+            device.name,
+            level.map_or("no data".to_owned(), |level| format!("{level}%"))
+        );
+
+        match DeviceTray::new(device, level, Arc::clone(&quit)).spawn() {
+            Ok(handle) => handles.push(handle),
+            Err(err) => warn!("cannot add a tray icon: {err}"),
         }
     }
+
+    if handles.is_empty() {
+        warn!("no tray icon could be added, exiting");
+        return Ok(());
+    }
+
+    while !quit.load(Ordering::Relaxed) {
+        thread::sleep(QUIT_CHECK_INTERVAL);
+    }
+
+    for handle in handles {
+        handle.shutdown().wait();
+    }
+
+    info!("quit requested from the tray, exiting");
+    Ok(())
 }

@@ -85,17 +85,17 @@ fn percentage_to_u8(percentage: f64) -> Option<u8> {
 
 /// The part of an `org.freedesktop.UPower.Device` object this source uses.
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeviceSnapshot {
+struct DeviceSnapshot {
     /// Object path of the device, used as the device id.
-    pub object_path: String,
+    object_path: String,
     /// `Model` property; empty when UPower has no name for the device.
-    pub model: String,
+    model: String,
     /// Raw `Type` property.
-    pub kind: u32,
+    kind: u32,
     /// `Percentage` property as a fraction of 100, `None` when it was absent.
-    pub percentage: Option<f64>,
+    percentage: Option<f64>,
     /// `IsPresent` property.
-    pub is_present: bool,
+    is_present: bool,
 }
 
 impl DeviceSnapshot {
@@ -104,7 +104,7 @@ impl DeviceSnapshot {
     /// Returns `None` when the object is not a device worth a tray icon: wrong
     /// kind, or not present right now because it is switched off or out of range
     /// of its receiver.
-    pub fn to_device(&self) -> Option<Device> {
+    fn to_device(&self) -> Option<Device> {
         if !self.is_present {
             return None;
         }
@@ -126,7 +126,7 @@ impl DeviceSnapshot {
     }
 
     /// Charge level in whole percent, `None` when UPower reports no usable value.
-    pub fn level(&self) -> Option<u8> {
+    fn level(&self) -> Option<u8> {
         self.percentage.and_then(percentage_to_u8)
     }
 }
