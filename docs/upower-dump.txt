@@ -1,0 +1,81 @@
+Device: /org/freedesktop/UPower/devices/battery_BAT1
+  native-path:          BAT1
+  vendor:               Desay
+  model:                HB4792Z9ECW-22T
+  serial:               <redacted>
+  power supply:         yes
+  updated:              Ср 18 ноя 2026 13:40:10 (18 seconds ago)
+  has history:          yes
+  has statistics:       yes
+  battery
+    present:             yes
+    rechargeable:        yes
+    state:               charging
+    warning-level:       none
+    energy:              15,7919 Wh
+    energy-empty:        0 Wh
+    energy-full:         43,2577 Wh
+    energy-full-design:  55,2372 Wh
+    voltage-min-design:  7,64 V
+    capacity-level:      Normal
+    energy-rate:         18,3436 W
+    voltage:             7,976 V
+    charge-cycles:       645
+    time to full:        1,5 hours
+    percentage:          37%
+    capacity:            78,3126%
+    technology:          lithium-ion
+    charge-start-threshold:        75%
+    charge-end-threshold:          80%
+    charge-threshold-supported:    yes
+    icon-name:          'battery-good-charging-symbolic'
+  History (charge):
+    1794998410	37,000	charging
+    1794998317	36,000	charging
+  History (rate):
+    1794998410	18,344	charging
+    1794998407	18,397	charging
+    1794998377	18,069	charging
+    1794998347	15,013	charging
+    1794998317	17,901	charging
+  History (voltage):
+    1794998410	7,976	charging
+    1794998407	7,970	charging
+    1794998377	7,975	charging
+    1794998347	7,938	charging
+    1794998317	7,974	charging
+
+Device: /org/freedesktop/UPower/devices/line_power_ACAD
+  native-path:          ACAD
+  power supply:         yes
+  updated:              Ср 18 ноя 2026 13:17:47 (1361 seconds ago)
+  has history:          no
+  has statistics:       no
+  line-power
+    warning-level:       none
+    online:              yes
+    icon-name:          'ac-adapter-symbolic'
+
+Device: /org/freedesktop/UPower/devices/DisplayDevice
+  power supply:         yes
+  updated:              Ср 18 ноя 2026 13:40:10 (18 seconds ago)
+  has history:          no
+  has statistics:       no
+  battery
+    present:             yes
+    state:               charging
+    warning-level:       none
+    energy:              15,7919 Wh
+    energy-full:         43,2577 Wh
+    energy-rate:         18,3436 W
+    charge-cycles:       N/A
+    time to full:        1,5 hours
+    percentage:          37%
+    icon-name:          'battery-good-charging-symbolic'
+
+Daemon:
+  daemon-version:  1.91.5
+  on-battery:      no
+  lid-is-closed:   no
+  lid-is-present:  yes
+  critical-action: Sleep
