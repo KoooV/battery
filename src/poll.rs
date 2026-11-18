@@ -128,7 +128,11 @@ pub fn run<S: TraySink>(
             return;
         }
 
-        wait(interval, stop);
+        // A stop request during the wait ends the loop without another poll: the
+        // extra poll would only delay the exit behind another D-Bus round trip.
+        if wait(interval, stop) {
+            return;
+        }
     }
 }
 
@@ -157,22 +161,28 @@ fn log_readings(readings: &[Reading]) {
 }
 
 /// Sleeps up to `interval`, waking early when a stop is requested.
-fn wait(interval: Duration, stop: &AtomicBool) {
+///
+/// Returns `true` when the caller should stop.
+fn wait(interval: Duration, stop: &AtomicBool) -> bool {
     let mut slept = Duration::ZERO;
 
     while slept < interval {
         if stop.load(Ordering::Relaxed) {
-            return;
+            return true;
         }
 
         let step = STOP_CHECK.min(interval - slept);
         thread::sleep(step);
         slept += step;
     }
+
+    stop.load(Ordering::Relaxed)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::sources::{DeviceKind, Protocol, SourceError};
 
@@ -405,6 +415,41 @@ mod tests {
 
         assert!(sink.removed.is_empty());
         assert_eq!(sink.shown.last(), Some(&("mouse".to_owned(), None)));
+    }
+
+    #[test]
+    fn wait_returns_at_once_when_stop_is_already_set() {
+        let stop = AtomicBool::new(true);
+
+        assert!(wait(Duration::from_secs(60), &stop));
+    }
+
+    #[test]
+    fn wait_gives_up_early_when_stopped_meanwhile() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let wake = Arc::clone(&stop);
+        let stopper = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(50));
+            wake.store(true, Ordering::Relaxed);
+        });
+
+        let started = std::time::Instant::now();
+        let stopped = wait(Duration::from_secs(60), &stop);
+        stopper.join().expect("stopper thread");
+
+        assert!(stopped);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "waited {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn wait_sleeps_through_a_short_interval() {
+        let stop = AtomicBool::new(false);
+
+        assert!(!wait(Duration::from_millis(10), &stop));
     }
 
     #[test]
