@@ -48,17 +48,17 @@ Logitech и Razer отсутствуют. `libdbus` не понадобился:
 
 **Цель:** структура модулей и общая модель данных, без реальной логики.
 
-- [ ] Настроить `Cargo.toml` с зависимостями из стека
-- [ ] Создать модули: `sources/`, `tray/`, `notify/`, `state/`, `icon/`, `main.rs`
-- [ ] Описать модель устройства: `Device { id, name, kind (mouse/keyboard/other), protocol }`
-- [ ] Описать трейт `BatterySource`:
+- [x] Настроить `Cargo.toml` с зависимостями из стека
+- [x] Создать модули: `sources/`, `tray/`, `notify/`, `state/`, `icon/`, `main.rs`
+- [x] Описать модель устройства: `Device { id, name, kind (mouse/keyboard/other), protocol }`
+- [x] Описать трейт `BatterySource`:
   - `fn name(&self) -> &str`
   - `fn list(&self) -> Result<Vec<Device>>`
   - `fn level(&self, dev: &Device) -> Result<Option<u8>>`
-- [ ] Описать состояние: `DeviceState { level: Option<u8>, last_notified_below_threshold: bool }`
-- [ ] Добавить константы: `POLL_INTERVAL = 10 min`, `LOW_THRESHOLD = 10`
-- [ ] Настроить `tracing` для вывода в консоль
-- [ ] Написать пустой `main`, который собирается и выходит
+- [x] Описать состояние: `DeviceState { level: Option<u8>, last_notified_below_threshold: bool }`
+- [x] Добавить константы: `POLL_INTERVAL = 10 min`, `LOW_THRESHOLD = 10`
+- [x] Настроить `tracing` для вывода в консоль
+- [x] Написать пустой `main`, который собирается и выходит
 
 **Критерий готовности:** `cargo build` проходит без ошибок и предупреждений.
 
