@@ -1,0 +1,16 @@
+# battery-tray: let the logged-in user read the wireless receivers directly
+# over hidraw. Vendor backends (HID++, vendor reports) cannot work without it,
+# because the kernel creates /dev/hidraw* as root:root 0600.
+#
+# Install with:
+#   sudo install -m 0644 packaging/udev/99-battery-tray-hidraw.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw
+#
+# `TAG+="uaccess"` alone gave no ACL on the development machine, so the group is
+# set explicitly. Adjust `users` if the desktop user is in another group.
+
+# RDMCTMZT 2.4G Wireless Receiver (ardor mouse + cidoo keyboard on one dongle)
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="36b0", TAG+="uaccess", GROUP="users", MODE="0660"
+
+# Compx 2.4G Wireless Receiver (second wireless kit)
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", TAG+="uaccess", GROUP="users", MODE="0660"
