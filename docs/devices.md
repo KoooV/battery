@@ -30,7 +30,7 @@ Taken from `/sys/class/hidraw/*/device/uevent`, `lsusb` and
 | Device | VID:PID | Interfaces | UPower sees it | Kernel `power_supply` | Source / verdict |
 | --- | --- | --- | --- | --- | --- |
 | Keyboard cidoo (wireless, "RDMCTMZT Wireless 2.4G Dongle") | `36b0:3002` | `hidraw0` keyboard, `hidraw2` mouse/system/consumer, `hidraw1` vendor page `0xff60` usage `0x61`, 32-byte input + 32-byte output | no | no | Vendor channel silent, no feature reports. No battery exposed |
-| Mouse ardor ("Compx 2.4G Wireless Receiver") | `3554:f53c` | `hidraw3` keyboard/system, `hidraw5` mouse/consumer, `hidraw4` vendor pages `0xff02`, `0xff03`, `0xff04` (feature), `0xff05` | no | no | Feature reports work, but none carries a charge level |
+| Mouse ardor ("Compx 2.4G Wireless Receiver") | `3554:f53c` | `hidraw3` keyboard/system, `hidraw5` mouse/consumer, `hidraw4` vendor pages `0xff02` (battery protocol), `0xff03`, `0xff04` (feature), `0xff05` | no | no | Vendor protocol decoded: charge is readable. See `CompxSource` |
 | Touchpad ("GXTP7863:00") | `27c6:01e0` (I2C HID) | `hidraw6` via `hid-multitouch` | no | no | No battery; excluded from all sources |
 
 Other USB devices present are unrelated: webcam (`0408:1040`), Bluetooth
@@ -92,19 +92,42 @@ The physical pairing is not what the interface layout suggests:
 
 ### Verdict
 
-Neither receiver exposes a battery level. There is no standard HID battery page,
-no queryable feature report carrying a percentage, and no unsolicited report that
-changes with the device state. The only unexplained byte is `0x40` (64) in the
-17-byte power-event report; three `100`s in feature report `0x06` are also
-indicative-looking. Both are unproven and, given that the whole packets repeat
-identically across power cycles, more consistent with a fixed configuration blob
-(DPI stages, report timing) than with a live charge reading.
+`3554:f53c` **does report the charge** — the earlier "no battery" conclusion in
+this file was wrong. The receiver speaks the Compx/Nordic 2.4G family protocol:
+a 17-byte frame on report `0x08` of collection `0xff02`/`0x02`, checksum chosen
+so all bytes sum to `0x55`.
+
+```text
+write  08 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49
+reply  08 04 00 00 00 02 64 00 11 2d 00 00 00 00 00 00 a5
+ ^id ^cmd          ^-  ^%  ^w  ^^^^^ mV          ^checksum
+```
+
+Byte 6 is the charge in percent, byte 7 a wired/charging flag, bytes 8–9 the cell
+voltage in millivolts, big-endian. Captured from the ardor mouse at full charge:
+`0x64` = 100 %, `0x11 0x2d` = 4397 mV, repeatedly drifting by a few millivolts
+(4388, 4392, 4397) — a live ADC, not a constant. `src/sources/compx.rs` is the
+backend built on this.
+
+Two traps found on the way:
+
+- Feature report `0x06` of collection `0xff04` reads `06 00 00 64 64 64 9b 97 c9`
+  and never changes: the three `0x64` are full-charge capacity, not the level.
+  Believing it would pin every mouse at 100 %.
+- The receiver answers only while the device is awake. A sleeping mouse leaves the
+  query unanswered, which must be reported as "no data", not as an error.
+
+The power-event report seen earlier (`08 0a 00 00 00 0a 40 … f9`) is the same
+framing (`0x55 − Σ = 0xf9`) with command `0x0a`; it is a notification, not a
+query.
+
+`36b0:3002` exposes nothing: no feature reports at all, and its vendor channel
+`hidraw1` stays silent through minutes of typing, so the cidoo keyboard has no
+readable charge with the current firmware.
 
 ## Open items
 
-- To settle the `0x40` / `100,100,100` candidates one needs a second data point at
-  a different charge: repeat the probe with a device that is visibly not at 100 %.
-  Until then no backend is written for these receivers — guessing a vendor
-  protocol would produce wrong icons in the tray.
+- The cidoo keyboard on `36b0:3002` still has no battery source. Nothing to build
+  against: the firmware answers no query and sends no report.
 - If the user has Logitech or Razer hardware, attach it once so the HID++ and
   OpenRazer backends can be tested.

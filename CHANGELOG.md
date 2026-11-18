@@ -20,6 +20,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   5 s timeout and a missing daemon or vanished device is an error, not a crash.
 - Unit tests for the UPower mapping and parsing on a saved `GetAll` reply
   (`tests/fixtures/upower-getall.txt`).
+- Compx source (`CompxSource`): reads the charge of Compx/Nordic 2.4G receivers
+  (Compx, ATK, VXE, VGN, Zaopin, Ardor and other rebrands) with their vendor
+  protocol — a 17-byte frame on report `0x08`, command `0x04`, checksum `0x55`.
+  A device that is asleep behind its receiver is reported as "no data" instead
+  of failing the poll. The `0x06` feature report is deliberately ignored: it
+  carries full-charge capacity, not the live level.
+- `hid_probe` example: `--battery[=N]` asks the receivers for the charge,
+  `--scan` sweeps the commands of the family, and `--listen` dumps raw reports.
 - Tray: one StatusNotifierItem per device (ksni), with the device name and
   charge in the menu and a "Quit" entry that stops the application.
 - Icon renderer (tiny-skia): rounded background coloured by level (green above

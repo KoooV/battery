@@ -9,9 +9,11 @@
 
 use thiserror::Error;
 
+pub mod compx;
 pub mod demo;
 pub mod upower;
 
+pub use compx::CompxSource;
 pub use upower::UpowerSource;
 
 /// Kind of peripheral a source reports.
@@ -34,6 +36,9 @@ pub enum Protocol {
     Hidpp,
     /// Razer device driven through the OpenRazer daemon.
     OpenRazer,
+    /// Vendor protocol of the Compx/Nordic 2.4G receivers (`0xff02`, command
+    /// `0x04`), used by many rebranded wireless mice.
+    Compx,
     /// Protocol that does not fit the named backends yet.
     Other,
 }

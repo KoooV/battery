@@ -8,7 +8,7 @@ use battery_tray::notify::Notifier;
 use battery_tray::poll;
 use battery_tray::sources::demo::{DemoSource, LEVEL_ENV};
 use battery_tray::tray::TrayItems;
-use battery_tray::{BatterySource, LOW_THRESHOLD, POLL_INTERVAL, UpowerSource};
+use battery_tray::{BatterySource, CompxSource, LOW_THRESHOLD, POLL_INTERVAL, UpowerSource};
 use tracing::{info, warn};
 
 fn main() -> Result<()> {
@@ -26,6 +26,11 @@ fn main() -> Result<()> {
 
     let mut sources: Vec<Box<dyn BatterySource>> = Vec::new();
     match UpowerSource::connect() {
+        Ok(source) => sources.push(Box::new(source)),
+        Err(err) => warn!("{err}"),
+    }
+
+    match CompxSource::connect() {
         Ok(source) => sources.push(Box::new(source)),
         Err(err) => warn!("{err}"),
     }
